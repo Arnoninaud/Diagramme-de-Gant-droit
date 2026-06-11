@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frise / Gantt à partir d'un Excel</title>
+
+<!-- Lecture des fichiers Excel -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<!-- Polices -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --creme: #f6f3ec;
+    --surface: #fffdf8;
+    --encre: #20211c;
+    --encre-doux: #5c5e54;
+    --bordure: #e0dccf;
+    --vert: #2f6b4f;
+    --vert-clair: #4d8a6b;
+    --terre: #c1502e;
+    --ombre: 0 1px 2px rgba(32,33,28,.05), 0 8px 24px rgba(32,33,28,.06);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Hanken Grotesk', sans-serif;
+    background: var(--creme);
+    color: var(--encre);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    background-image: radial-gradient(circle at 1px 1px, rgba(32,33,28,.035) 1px, transparent 0);
+    background-size: 22px 22px;
+    min-height: 100vh;
+  }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 48px 24px 80px; }
+
+  header { margin-bottom: 36px; }
+  .kicker {
+    font-size: 13px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--terre); font-weight: 600; margin-bottom: 8px;
+  }
+  h1 {
+    font-family: 'Fraunces', serif; font-weight: 600;
+    font-size: clamp(32px, 5vw, 50px); line-height: 1.05;
+    letter-spacing: -.01em;
+  }
+  h1 em { font-style: italic; color: var(--vert); }
+  .sub { color: var(--encre-doux); margin-top: 12px; max-width: 60ch; font-size: 16px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--bordure);
+    border-radius: 14px; box-shadow: var(--ombre);
+    padding: 28px; margin-bottom: 24px;
+  }
+  .card h2 {
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 22px;
+    margin-bottom: 6px;
+  }
+  .card .hint { color: var(--encre-doux); font-size: 14px; margin-bottom: 20px; }
+
+  /* Zone de dépôt */
+  #drop {
+    border: 2px dashed var(--bordure); border-radius: 12px;
+    padding: 48px 24px; text-align: center; cursor: pointer;
+    transition: .18s; background: #fbf9f3;
+  }
+  #drop:hover, #drop.over { border-color: var(--vert); background: #f1f6f2; }
+  #drop .big { font-family:'Fraunces',serif; font-size: 19px; margin-bottom: 6px; }
+  #drop .small { color: var(--encre-doux); font-size: 14px; }
+  #drop svg { width: 40px; height: 40px; color: var(--vert); margin-bottom: 14px; }
+
+  /* Champs de configuration */
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 18px;
+  }
+  label.field { display: block; }
+  label.field .lab {
+    display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px;
+    letter-spacing: .02em;
+  }
+  label.field .lab small { font-weight: 400; color: var(--encre-doux); }
+  select, button, input[type=text] {
+    font-family: inherit; font-size: 15px;
+  }
+  select {
+    width: 100%; padding: 11px 12px; border-radius: 9px;
+    border: 1px solid var(--bordure); background: #fff; color: var(--encre);
+    cursor: pointer; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%235c5e54' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+  }
+  select:focus, input:focus { outline: 2px solid var(--vert-clair); outline-offset: 1px; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 22px; border-radius: 10px; border: none;
+    background: var(--vert); color: #fff; font-weight: 600; cursor: pointer;
+    transition: .15s; font-size: 15px;
+  }
+  .btn:hover { background: #275a42; transform: translateY(-1px); }
+  .btn:disabled { background: #b6c2ba; cursor: not-allowed; transform: none; }
+  .btn.ghost { background: transparent; color: var(--vert); border: 1px solid var(--vert); }
+  .btn.ghost:hover { background: #eef4ef; }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px; align-items: center; }
+
+  .hidden { display: none !important; }
+
+  .note { font-size: 13.5px; color: var(--encre-doux); margin-top: 14px; }
+  .warn {
+    background: #fcefe9; border: 1px solid #f0c9b8; color: #8c3a1d;
+    padding: 12px 14px; border-radius: 9px; font-size: 14px; margin-top: 16px;
+  }
+
+  /* Aperçu tableau */
+  .preview { overflow-x: auto; margin-top: 18px; border: 1px solid var(--bordure); border-radius: 9px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--bordure); white-space: nowrap; }
+  th { background: #f1ede3; font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+
+  /* Graphique */
+  #chartCard { padding: 20px; }
+  #chartScroll { overflow-x: auto; }
+  #chart { display: block; }
+  .legend { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 4px; font-size: 13.5px; color: var(--encre-doux); padding: 0 8px 8px; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .swatch { width: 16px; height: 12px; border-radius: 3px; }
+  .swatch.dot { width: 12px; height: 12px; border-radius: 50%; transform: rotate(45deg); border-radius: 2px; }
+  .swatch.hachure { background: repeating-linear-gradient(45deg, #8a8c82, #8a8c82 2px, #ded9cc 2px, #ded9cc 4px); }
+
+  footer { text-align: center; color: var(--encre-doux); font-size: 13px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="kicker">Excel → diagramme de Gantt</div>
+    <h1> Création de<em>Frise automatiques</em><br> pour l'histoire politique</h1>
+    <p class="sub">Déposez un fichier Excel, indiquez quelles colonnes contiennent la date de début, la date de fin, le nom de l'événement et s'il est ponctuel. La frise se génère toute seule.</p>
+  </header>
+
+  <!-- ÉTAPE 1 : upload -->
+  <div class="card" id="uploadCard">
+    <h2>1 · Votre fichier</h2>
+    <p class="hint">Formats acceptés : .xlsx, .xls, .csv. La première ligne doit contenir les noms de colonnes.</p>
+    <div id="drop">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      <div class="big">Glissez votre fichier ici</div>
+      <div class="small">ou cliquez pour le choisir</div>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" class="hidden">
+    <div id="uploadWarn"></div>
+  </div>
+
+  <!-- ÉTAPE 2 : configuration des colonnes -->
+  <div class="card hidden" id="configCard">
+    <h2>2 · Vos colonnes</h2>
+    <p class="hint">Dites-moi à quoi correspond chaque colonne. Le <b>nom</b> définit une ligne de la frise : plusieurs entrées portant le même nom se placent sur la même ligne, à la suite. Le <b>commentaire</b> est l'étiquette de chaque événement (ex. « Charles » puis « Louis » sur la ligne « Règne »).</p>
+    <div class="grid">
+      <label class="field">
+        <span class="lab">Nom <small>(= ligne de la frise)</small></span>
+        <select id="colNom"></select>
+      </label>
+      <label class="field">
+        <span class="lab">Commentaire <small>(étiquette — optionnel)</small></span>
+        <select id="colCommentaire"></select>
+      </label>
+      <label class="field">
+        <span class="lab">Date de début</span>
+        <select id="colDebut"></select>
+      </label>
+      <label class="field">
+        <span class="lab">Date de fin <small>(vide si ponctuel)</small></span>
+        <select id="colFin"></select>
+      </label>
+      <label class="field">
+        <span class="lab">Ponctuel ? <small>(oui/non — optionnel)</small></span>
+        <select id="colPonctuel"></select>
+      </label>
+      <label class="field">
+        <span class="lab">Orientation politique <small>(gauche/centre/droite/extrême droite)</small></span>
+        <select id="colOrientation"></select>
+      </label>
+
+      <label class="field">
+        <span class="lab">Position gouvernementale</span>
+        <select id="colSituation"></select>
+      </label>
+
+      <label class="field">
+        <span class="lab">Réussi</span>
+        <select id="colReussi"></select>
+      </label>
+
+      <label class="field">
+        <span class="lab">Fait majoritaire <small>(oui/non)</small></span>
+        <select id="colMajoritaire"></select>
+      </label>
+      <label class="field">
+        <span class="lab">Ordre <small>(ordre des lignes — optionnel)</small></span>
+        <select id="colOrdre"></select>
+      </label>
+    </div>
+
+    <div class="preview" id="previewBox"></div>
+
+    <div class="actions">
+      <button class="btn" id="genBtn">Générer la frise</button>
+      <span class="note" id="rowCount"></span>
+    </div>
+    <div id="configWarn"></div>
+  </div>
+
+  <!-- ÉTAPE 3 : graphique -->
+  <div class="card hidden" id="chartCard">
+    <div class="legend">
+      <span><span class="swatch" style="background:#5c5e54"></span> Événement avec durée</span>
+      <span><span class="swatch dot" style="background:#5c5e54"></span> Événement ponctuel</span>
+    </div>
+    <div class="legend" id="legendCouleurs"></div>
+    <div id="chartScroll"></div>
+    <div class="actions">
+      <button class="btn" id="pngBtn">Télécharger en PNG</button>
+      <button class="btn ghost" id="svgBtn">Télécharger en SVG</button>
+    </div>
+    <div id="chartWarn"></div>
+  </div>
+
+  <footer>Tout se passe dans votre navigateur — aucun fichier n'est envoyé sur internet — Auteur : Arnaud BUREL.</footer>
+</div>
+
+<script>
+"use strict";
+
+// ---------- État global ----------
+let donnees = [];   // tableau d'objets { colonne: valeur }
+let colonnes = [];  // noms de colonnes du fichier
+
+const $ = (id) => document.getElementById(id);
+
+// ---------- Étape 1 : lecture du fichier ----------
+const drop = $("drop");
+const fileInput = $("fileInput");
+
+drop.addEventListener("click", () => fileInput.click());
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", (e) => {
+  e.preventDefault();
+  drop.classList.remove("over");
+  if (e.dataTransfer.files.length) lireFichier(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener("change", (e) => {
+  if (e.target.files.length) lireFichier(e.target.files[0]);
+});
+
+function lireFichier(fichier) {
+  $("uploadWarn").innerHTML = "";
+  const lecteur = new FileReader();
+  lecteur.onload = (ev) => {
+    try {
+      const classeur = XLSX.read(ev.target.result, { type: "array", cellDates: true });
+      const feuille = classeur.Sheets[classeur.SheetNames[0]];
+      // defval garde les cellules vides, header gère l'en-tête
+      const lignes = XLSX.utils.sheet_to_json(feuille, { defval: "" });
+      if (!lignes.length) {
+        return avertir("uploadWarn", "Le fichier semble vide ou ne contient pas de données après l'en-tête.");
+      }
+      donnees = lignes;
+      colonnes = Object.keys(lignes[0]);
+      preparerConfig();
+    } catch (err) {
+      avertir("uploadWarn", "Impossible de lire ce fichier : " + err.message);
+    }
+  };
+  lecteur.onerror = () => avertir("uploadWarn", "Erreur pendant la lecture du fichier.");
+  lecteur.readAsArrayBuffer(fichier);
+}
+
+// ---------- Étape 2 : configuration ----------
+function preparerConfig() {
+  // Remplit les listes déroulantes
+  const selects = ["colNom", "colCommentaire", "colDebut", "colFin",
+                  "colPonctuel", "colOrientation",
+                  "colSituation", "colReussi",
+                  "colOrdre"];
+  selects.forEach((id) => {
+    const sel = $(id);
+    sel.innerHTML = "";
+    if (
+        id === "colCommentaire" ||
+        id === "colFin" ||
+        id === "colPonctuel" ||
+        id === "colOrientation" ||
+        id === "colSituation" ||
+        id === "colReussi" ||
+        id === "colMajoritaire" ||
+        id === "colOrdre"
+    ) {
+      sel.appendChild(opt("", "— aucune —"));
+    }
+    colonnes.forEach((c) => sel.appendChild(opt(c, c)));
+  });
+
+  // Devine les colonnes d'après leur nom
+  devine("colNom", ["nom", "categorie", "catégorie", "ligne", "groupe", "regne", "règne", "intitule", "intitulé", "titre", "tache", "tâche"]);
+  devine("colCommentaire", ["commentaire", "comment", "label", "etiquette", "étiquette", "detail", "détail", "evenement", "événement", "libelle", "libellé"]);
+  devine("colDebut", ["debut", "début", "start", "depart", "départ", "date debut", "date_debut"]);
+  devine("colFin", ["fin", "end", "date fin", "date_fin", "echeance", "échéance"]);
+  devine("colPonctuel", ["ponctuel", "ponctuelle", "instantane", "instantané", "jalon", "milestone"]);
+  devine("colOrientation", ["orientation", "bord", "tendance", "couleur politique", "camp", "parti", "politique"]);
+  devine("colMajoritaire", ["majoritaire", "majorité", "fait majoritaire", "fait_majoritaire", "majo"]);
+  devine("colOrdre", ["ordre", "rang", "position"]);
+  devine("colSituation", ["position gouvernemental", "position gouvernementale","gouvernement", "situation"]);
+  devine("colReussi",["réussi", "reussi", "succes", "succès"]);
+  $("rowCount").textContent = donnees.length + " ligne(s) détectée(s).";
+  apercu();
+  $("configCard").classList.remove("hidden");
+  $("configCard").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function devine(idSelect, motsCles) {
+  const sel = $(idSelect);
+  const trouve = colonnes.find((c) =>
+    motsCles.some((m) => c.toString().toLowerCase().trim() === m
+      || c.toString().toLowerCase().includes(m))
+  );
+  if (trouve) sel.value = trouve;
+}
+
+function opt(val, texte) {
+  const o = document.createElement("option");
+  o.value = val; o.textContent = texte; return o;
+}
+
+function apercu() {
+  // Affiche les 5 premières lignes
+  const max = Math.min(5, donnees.length);
+  let html = "<table><thead><tr>";
+  colonnes.forEach((c) => html += "<th>" + echappe(c) + "</th>");
+  html += "</tr></thead><tbody>";
+  for (let i = 0; i < max; i++) {
+    html += "<tr>";
+    colonnes.forEach((c) => html += "<td>" + echappe(formatApercu(donnees[i][c])) + "</td>");
+    html += "</tr>";
+  }
+  html += "</tbody></table>";
+  $("previewBox").innerHTML = html;
+}
+
+function formatApercu(v) {
+  if (v instanceof Date) return v.toLocaleDateString("fr-FR");
+  return v === "" || v == null ? "—" : String(v);
+}
+
+// ---------- Génération ----------
+$("genBtn").addEventListener("click", genererFrise);
+
+function genererFrise() {
+  $("configWarn").innerHTML = "";
+  const cNom = $("colNom").value;
+  const cCommentaire = $("colCommentaire").value;
+  const cDebut = $("colDebut").value;
+  const cFin = $("colFin").value;
+  const cPonct = $("colPonctuel").value;
+  const cOrient = $("colOrientation").value;
+  const cMajo = $("colMajoritaire").value;
+  const cOrdre = $("colOrdre").value;
+  const cSituation = $("colSituation").value;
+  const cReussi = $("colReussi").value;
+  if (!cNom || !cDebut) {
+    return avertir("configWarn", "Le nom de l'événement et la date de début sont obligatoires.");
+  }
+
+  const evenements = [];
+  let ignorees = 0;
+
+  donnees.forEach((ligne) => {
+    let debut = parseDate(ligne[cDebut]);
+
+    // La colonne "ponctuel" contient normalement oui/non. Par tolérance,
+    // elle peut aussi contenir directement la date d'un événement ponctuel.
+    const valPonct = cPonct ? ligne[cPonct] : "";
+    let ponctuel = estOui(valPonct);
+    const datePonct = parseDate(valPonct);
+
+    // Date de début absente mais une date figure dans "ponctuel" :
+    // on s'en sert comme date de l'événement, traité comme ponctuel.
+    if (!debut && datePonct) { debut = datePonct; ponctuel = true; }
+
+    if (!debut) { ignorees++; return; }   // vraiment aucune date exploitable
+
+    let fin = cFin ? parseDate(ligne[cFin]) : null;
+
+    // Ponctuel si marqué "oui", ou s'il n'y a pas de date de fin valide.
+    if (ponctuel || !fin) { ponctuel = true; fin = debut; }
+
+    // Sécurité : fin avant début -> on remet dans l'ordre.
+    if (fin < debut) { const t = fin; fin = debut; debut = t; }
+    if (+fin === +debut) ponctuel = true;
+
+    evenements.push({
+      nom: String(ligne[cNom] || "(sans nom)"),
+      commentaire: cCommentaire ? String(ligne[cCommentaire] || "") : "",
+      orientation: cOrient ? ligne[cOrient] : "",
+      majoritaire: cMajo ? estOui(ligne[cMajo]) : false,
+      ordre: cOrdre ? Number(ligne[cOrdre]) : null,
+      situation: cSituation ? ligne[cSituation] : "",
+      reussi: cReussi ? ligne[cReussi] : "",
+      debut: debut,
+      fin: fin,
+      ponctuel: ponctuel
+    });
+  });
+
+  if (!evenements.length) {
+    return avertir("configWarn", "Aucune date de début n'a pu être lue. Vérifiez la colonne choisie et le format des dates.");
+  }
+
+  // Tri par date de début
+  evenements.sort((a, b) => a.debut - b.debut || a.fin - b.fin);
+
+  dessinerGantt(evenements);
+  if (ignorees > 0) {
+    avertir("chartWarn", ignorees + " ligne(s) ignorée(s) faute de date de début lisible.");
+  } else {
+    $("chartWarn").innerHTML = "";
+  }
+  $("chartCard").classList.remove("hidden");
+  $("chartCard").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// ---------- Dessin du diagramme de Gantt (SVG) ----------
+let svgActuel = null;
+
+function dessinerGantt(evs) {
+  const SVGNS = "http://www.w3.org/2000/svg";
+
+  // --- Regroupement par nom : une ligne de frise par nom unique ---
+  const groupesMap = new Map();
+  evs.forEach((e) => {
+    if (!groupesMap.has(e.nom)) groupesMap.set(e.nom, []);
+    groupesMap.get(e.nom).push(e);
+  });
+  // Segments triés par date dans chaque groupe ; groupes triés par date la plus ancienne
+  const groupes = [...groupesMap.entries()].map(([nom, items]) => {
+    items.sort((a, b) => a.debut - b.debut || a.fin - b.fin);
+    return {
+      nom: nom,
+      items: items,
+      min: items[0].debut,
+      ordre: items.find((x) => x.ordre != null && !isNaN(x.ordre))?.ordre ?? null
+    };
+  });
+  // Tri des lignes : ordre manuel s'il est renseigné, sinon par date la plus ancienne
+  groupes.sort((a, b) => {
+    const ao = a.ordre, bo = b.ordre;
+    if (ao != null && bo != null) return ao - bo;
+    if (ao != null) return -1;
+    if (bo != null) return 1;
+    return a.min - b.min;
+  });
+
+  // Une couleur par nom
+  const palette = ["#2f6b4f","#335f8a","#b5532b","#7a4a73","#2f7d7a",
+                   "#93324a","#6b7536","#46508c","#855a3a","#557a8a"];
+  const couleurNom = {};
+  groupes.forEach((g, i) => { couleurNom[g.nom] = palette[i % palette.length]; });
+
+  // --- Étendue temporelle ---
+  let minD = evs[0].debut, maxD = evs[0].fin;
+  evs.forEach((e) => { if (e.debut < minD) minD = e.debut; if (e.fin > maxD) maxD = e.fin; });
+  let etendue = maxD - minD || 86400000;
+  const marge = etendue * 0.04;
+  minD = new Date(+minD - marge);
+  maxD = new Date(+maxD + marge);
+  etendue = maxD - minD;
+
+  // --- Dimensions de base ---
+  const labelW = 230;          // largeur de la zone des libellés à gauche
+  const padTop = 50;
+  const padBottom = 24;
+  const padRight = 40;
+  const hBarreZone = 30;       // hauteur réservée à la barre (+marges)
+  const hNiveau = 17;          // hauteur d'un étage d'étiquette
+  const margeBarreLabel = 5;
+  const GAP = 8;               // espace horizontal minimal entre deux étiquettes
+  const axeH = 30;             // place pour l'axe des dates en tête de chaque bande
+  const espaceBande = 28;      // espace vertical entre deux bandes empilées
+  const mesure = (s) => s.length * 6.6 + 6;
+  const PX_CHAR = 7;
+
+  // Largeur idéale pour que les étiquettes tiennent dans les barres (sur toute la période)
+  const ticksAll = genererTicks(minD, maxD);
+  const PLOT_MIN = Math.max(620, ticksAll.length * 78);
+  let plotWideal = PLOT_MIN;
+  groupes.forEach((g) => {
+    g.items.forEach((e, j) => {
+      const nb = (e.commentaire || "").length;
+      if (!nb) return;
+      const lt = nb * PX_CHAR + 16;
+      let dispo = e.ponctuel
+        ? (g.items[j + 1] ? g.items[j + 1].debut - e.debut : etendue * 0.12)
+        : (e.fin - e.debut);
+      dispo = Math.max(dispo, etendue * 0.01);
+      const req = lt * (etendue / dispo);
+      if (req > plotWideal) plotWideal = req;
+    });
+  });
+  const PLOT_MAX_TOTAL = 3000;             // résolution horizontale totale maximale
+  plotWideal = Math.min(PLOT_MAX_TOTAL, plotWideal);
+
+  // Découpage en bandes empilées (au plus deux) si la frise idéale est trop large.
+  // Chaque bande couvre une tranche de temps sur toute la largeur -> barres plus larges.
+  const LARGEUR_BANDE = 5000;  // au-delà de laquelle on découpe en plusieurs bandes (résolution maximale pour que les étiquettes tiennent dans les barres)
+  let nbBandes, plotW;
+  if (plotWideal <= LARGEUR_BANDE) { nbBandes = 1; plotW = plotWideal; }
+  else { nbBandes = Math.ceil(plotWideal / LARGEUR_BANDE); plotW = Math.ceil(plotWideal / nbBandes); }
+  const dt = etendue / nbBandes;           // durée temporelle couverte par chaque bande
+
+  // --- Calcul d'une bande : segments visibles dans [tD,tF] + empilement des étiquettes ---
+  function computeBande(tD, tF) {
+    const etendueB = (+tF) - (+tD);
+    const xB = (ms) => labelW + ((ms - (+tD)) / etendueB) * plotW;
+    const lignes = groupes.map((g) => {
+      const vis = [];
+      g.items.forEach((e) => {
+        const ed = +e.debut, ef = +e.fin;
+        let dans, d0, d1;
+        if (e.ponctuel) { dans = ed >= +tD && ed < +tF; d0 = ed; d1 = ed; }
+        else { dans = ef > +tD && ed < +tF; d0 = Math.max(ed, +tD); d1 = Math.min(ef, +tF); }
+        if (dans) vis.push({ e: e, d0: d0, d1: d1, externe: false, niveau: 0 });
+      });
+      const externes = [];
+      vis.forEach((v) => {
+        if (!v.e.commentaire) return;
+        const w = mesure(v.e.commentaire);
+        if (v.e.ponctuel) v.externe = true;
+        else v.externe = (xB(v.d1) - xB(v.d0)) < w + 8;
+        if (v.externe) externes.push({ v: v, x0: xB(v.d0), w: w });
+      });
+      externes.sort((a, b) => a.x0 - b.x0);
+      const fin = [];
+      externes.forEach((L) => {
+        const x1 = L.x0, x2 = L.x0 + L.w;
+        let n = 0;
+        while (n < fin.length && x1 < fin[n] + GAP) n++;
+        L.v.niveau = n; fin[n] = x2;
+      });
+      return { g: g, vis: vis, nbNiveaux: fin.length, hauteur: hBarreZone + fin.length * hNiveau };
+    });
+    let h = axeH;
+    lignes.forEach((li) => { li.yTopRel = h; h += li.hauteur; });
+    return { lignes: lignes, xB: xB, tD: tD, tF: tF, hauteur: h };
+  }
+
+  const bandes = [];
+  for (let b = 0; b < nbBandes; b++) {
+    bandes.push(computeBande(new Date(+minD + b * dt), new Date(+minD + (b + 1) * dt)));
+  }
+
+  // Largeur totale (étendue à droite si une étiquette ancrée déborde) et hauteur totale
+  let maxDroite = labelW + plotW;
+  bandes.forEach((bi) => bi.lignes.forEach((li) => li.vis.forEach((v) => {
+    if (v.e.commentaire && v.externe) {
+      const bord = bi.xB(v.d0) + mesure(v.e.commentaire) + 6;
+      if (bord > maxDroite) maxDroite = bord;
+    }
+  })));
+  const totalW = Math.max(labelW + plotW + padRight, maxDroite + padRight);
+  let hauteurBandes = 0;
+  bandes.forEach((bi, k) => { hauteurBandes += bi.hauteur + (k < nbBandes - 1 ? espaceBande : 0); });
+  const totalH = padTop + hauteurBandes + padBottom;
+
+  // --- Création du SVG ---
+  const svg = document.createElementNS(SVGNS, "svg");
+  svg.setAttribute("xmlns", SVGNS);
+  svg.setAttribute("viewBox", `0 0 ${totalW} ${totalH}`);
+  svg.setAttribute("width", totalW);
+  svg.setAttribute("height", totalH);
+  svg.setAttribute("font-family", "'Hanken Grotesk', sans-serif");
+  svg.style.maxWidth = "none";
+
+  // Motif de hachures (fait majoritaire)
+  const defs = document.createElementNS(SVGNS, "defs");
+  const pat = document.createElementNS(SVGNS, "pattern");
+  pat.setAttribute("id", "hachures");
+  pat.setAttribute("width", "7"); pat.setAttribute("height", "7");
+  pat.setAttribute("patternUnits", "userSpaceOnUse");
+  pat.setAttribute("patternTransform", "rotate(45)");
+  const pl = document.createElementNS(SVGNS, "line");
+  pl.setAttribute("x1", "0"); pl.setAttribute("y1", "0");
+  pl.setAttribute("x2", "0"); pl.setAttribute("y2", "7");
+  pl.setAttribute("stroke", "#ffffff"); pl.setAttribute("stroke-width", "2.4");
+  pl.setAttribute("stroke-opacity", "0.6");
+  pat.appendChild(pl); defs.appendChild(pat); svg.appendChild(defs);
+
+  rect(svg, 0, 0, totalW, totalH, "#fffdf8");
+
+  let orientationUtilisee = false;
+  let majoritaireUtilise = false;
+
+  // --- Dessin de chaque bande, empilées verticalement ---
+  let base = padTop;
+  bandes.forEach((bi) => {
+    const xB = bi.xB;
+    const bandeBas = base + bi.hauteur;
+
+    // Grille verticale + axe des dates de la bande
+    const ticksB = genererTicks(bi.tD, bi.tF);
+    ticksB.forEach((t) => {
+      const px = xB(+t.date);
+      if (px < labelW - 1 || px > labelW + plotW + 1) return;
+      const ligne = document.createElementNS(SVGNS, "line");
+      ligne.setAttribute("x1", px); ligne.setAttribute("x2", px);
+      ligne.setAttribute("y1", base + axeH - 10); ligne.setAttribute("y2", bandeBas);
+      ligne.setAttribute("stroke", "#e7e2d6"); ligne.setAttribute("stroke-width", "1");
+      svg.appendChild(ligne);
+      texte(svg, px, base + axeH - 18, t.label, { size: 12, fill: "#5c5e54", anchor: "middle", weight: 600 });
+    });
+
+    // Séparateur vertical entre la colonne des noms et la zone temporelle
+    const sep = document.createElementNS(SVGNS, "line");
+    sep.setAttribute("x1", labelW); sep.setAttribute("x2", labelW);
+    sep.setAttribute("y1", base + axeH - 28); sep.setAttribute("y2", bandeBas);
+    sep.setAttribute("stroke", "#c9c4b6"); sep.setAttribute("stroke-width", "1.5");
+    svg.appendChild(sep);
+
+    bi.lignes.forEach((li, i) => {
+      const yLineTop = base + li.yTopRel;
+      const yBarre = yLineTop + li.nbNiveaux * hNiveau + 3;
+      const cy = yBarre + 10;
+      const coulNom = couleurNom[li.g.nom];
+
+      if (i % 2 === 0) rect(svg, labelW, yLineTop, plotW, li.hauteur, "#f7f4ec");
+      texte(svg, labelW - 14, cy + 4, tronquer(li.g.nom, 30), { size: 13.5, fill: "#20211c", anchor: "end", weight: 600 });
+
+      li.vis.forEach((v, j) => {
+        const e = v.e;
+        const opacite = 1;
+        const coulOri = couleurOrientation(
+          e.orientation,
+          e.situation,
+          e.reussi
+        );
+        if (coulOri) orientationUtilisee = true;
+        const coul = coulOri || coulNom;
+        const r = 7;
+
+        if (e.ponctuel) {
+          const px = xB(v.d0);
+          const losange = document.createElementNS(SVGNS, "path");
+          losange.setAttribute("d", `M ${px} ${cy-r} L ${px+r} ${cy} L ${px} ${cy+r} L ${px-r} ${cy} Z`);
+          losange.setAttribute("fill", coul);
+          svg.appendChild(losange);
+        } else {
+          const x1 = xB(v.d0), x2 = xB(v.d1);
+          const largeur = Math.max(4, x2 - x1);
+          const barre = document.createElementNS(SVGNS, "rect");
+          barre.setAttribute("x", x1); barre.setAttribute("y", yBarre);
+          barre.setAttribute("width", largeur); barre.setAttribute("height", 20);
+          barre.setAttribute("rx", 5); barre.setAttribute("fill", coul);
+          barre.setAttribute("fill-opacity", opacite);
+          svg.appendChild(barre);
+
+          if (e.majoritaire) {
+            majoritaireUtilise = true;
+            const hach = document.createElementNS(SVGNS, "rect");
+            hach.setAttribute("x", x1); hach.setAttribute("y", yBarre);
+            hach.setAttribute("width", largeur); hach.setAttribute("height", 20);
+            hach.setAttribute("rx", 5); hach.setAttribute("fill", "url(#hachures)");
+            svg.appendChild(hach);
+          }
+
+          if (e.commentaire && !v.externe) {
+            texte(svg, x1 + largeur / 2, cy + 4, e.commentaire, { size: 12, fill: "#ffffff", anchor: "middle", weight: 600 });
+          }
+        }
+
+        if (e.commentaire && v.externe) {
+          const x0 = e.ponctuel ? xB(v.d0) : (xB(v.d0) + xB(v.d1)) / 2;
+          const yLabel = yBarre - margeBarreLabel - v.niveau * hNiveau;
+          const sommet = e.ponctuel ? (cy - r) : yBarre;
+          const trait = document.createElementNS(SVGNS, "line");
+          trait.setAttribute("x1", x0); trait.setAttribute("y1", sommet);
+          trait.setAttribute("x2", x0); trait.setAttribute("y2", yLabel + 3);
+          trait.setAttribute("stroke", "#b9b3a3"); trait.setAttribute("stroke-width", "1");
+          svg.appendChild(trait);
+          texte(svg, x0, yLabel, e.commentaire, { size: 12, fill: "#20211c", anchor: "middle", weight: 500 });
+        }
+      });
+    });
+
+    base = bandeBas + espaceBande;
+  });
+
+  const cont = $("chartScroll");
+  cont.innerHTML = "";
+  cont.appendChild(svg);
+  svgActuel = svg;
+
+  // Légende des couleurs (orientation politique ou noms) + hachures
+  legende(groupes, couleurNom, orientationUtilisee, majoritaireUtilise);
+}
+
+// Couleur d'un segment selon son orientation politique
+function couleurOrientation(orientation, situation, reussi) {
+
+  const r = String(reussi || "").trim().toLowerCase();
+
+  // priorité absolue à la réussite
+  if (r === "oui") return "#2e7d32";   // vert
+  if (r === "non") return "#c62828";   // rouge
+
+  const o = String(orientation || "").trim().toLowerCase();
+  const s = String(situation || "").trim().toLowerCase();
+
+  // // DROITE
+  // if (o === "droite") {
+  //     if (s === "fait majoritaire") return "#0d47a1";
+  //     if (s === "cohabitation") return "#0d47a1";
+  //     if (s === "gouvernement minoritaire") return "#64b5f6";
+  //     if (s === "coalition") return "#64b5f6";
+  // }
+
+  // if (o === "gauche") {
+  //     if (s === "fait majoritaire") return "#c0392b";
+  //     if (s === "cohabitation") return "#c2185b";
+  //     if (s === "gouvernement minoritaire") return "#f8bbd0";
+  // }
+
+  // // CENTRE
+  // if (o === "centre") {
+  //   if (s === "fait majoritaire") return "#f39c12";
+  //   if (s === "gouvernement minoritaire") return "#ffcc80";
+  // }
+
+  // Couleurs par défaut si aucune situation particulière
+  if (o === "droite") return "#0d47a1";   // bleu
+  if (o === "gauche") return "#c0392b";   // rouge
+  if (o === "centre") return "#f39c12";   // orange
+  if (o === "extrême droite") return "#000000";   // noir
+  return "#5c5e54";
+}
+
+
+// Légende : orientation politique si utilisée, sinon noms ; + hachure si besoin
+function legende(groupes, couleurNom, orientationUtilisee, majoritaireUtilise) {
+  const box = $("legendCouleurs");
+  if (!box) return;
+  let html = "";
+  if (orientationUtilisee) {
+    html +=
+      swatchLeg("#0d47a1", "Droite") +
+      swatchLeg("#c0392b", "Gauche") +
+      swatchLeg("#f39c12", "Centre") +
+      swatchLeg("#000000", "Extrême droite") +
+      // swatchLeg("#0d47a1", "Majorité / Cohabitation") +
+      // swatchLeg("#64b5f6", "Minoritaire / Coalition") +
+      // swatchLeg("#d45087", "Cohabitation / Majorité") +
+      // swatchLeg("#f8bbd0", "Gauche minoritaire") +
+      // swatchLeg("#ef6c00", "Centre majoritaire") +
+      // swatchLeg("#ffcc80", "Centre minoritaire") +
+      swatchLeg("#2e7d32", "Réussi") +
+      swatchLeg("#c62828", "Non réussi");
+  }else if (groupes.length > 1) {
+    html += groupes.map((g) => swatchLeg(couleurNom[g.nom], tronquer(g.nom, 24))).join("");
+  }
+  if (majoritaireUtilise) {
+    html += '<span><span class="swatch hachure"></span> Fait majoritaire</span>';
+  }
+  box.innerHTML = html;
+}
+
+function swatchLeg(coul, label) {
+  return '<span><span class="swatch" style="background:' + coul + '"></span> ' + echappe(label) + '</span>';
+}
+
+// Petites fonctions SVG
+function rect(svg, x, y, w, h, fill) {
+  const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  r.setAttribute("x", x); r.setAttribute("y", y);
+  r.setAttribute("width", w); r.setAttribute("height", h);
+  r.setAttribute("fill", fill);
+  svg.appendChild(r);
+}
+function texte(svg, x, y, contenu, opt) {
+  const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  t.setAttribute("x", x); t.setAttribute("y", y);
+  t.setAttribute("font-size", opt.size || 13);
+  t.setAttribute("fill", opt.fill || "#20211c");
+  t.setAttribute("text-anchor", opt.anchor || "start");
+  if (opt.weight) t.setAttribute("font-weight", opt.weight);
+  t.textContent = contenu;
+  svg.appendChild(t);
+}
+function tronquer(s, n) { return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+
+// ---------- Graduations temporelles adaptatives ----------
+function genererTicks(minD, maxD) {
+  const jours = (maxD - minD) / 86400000;
+  const ticks = [];
+
+  if (jours <= 45) {
+    // pas en jours (ajusté pour ~10 graduations max)
+    const pas = Math.max(1, Math.ceil(jours / 10));
+    let d = new Date(minD); d.setHours(0,0,0,0);
+    while (d <= maxD) {
+      ticks.push({ date: new Date(d), label: d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) });
+      d.setDate(d.getDate() + pas);
+    }
+  } else if (jours <= 1100) {
+    // pas mensuel (ou tous les 2-3 mois si large)
+    const pasMois = jours <= 200 ? 1 : (jours <= 550 ? 2 : 3);
+    let d = new Date(minD.getFullYear(), minD.getMonth(), 1);
+    while (d <= maxD) {
+      const lbl = d.toLocaleDateString("fr-FR", { month: "short", year: "2-digit" });
+      ticks.push({ date: new Date(d), label: lbl });
+      d.setMonth(d.getMonth() + pasMois);
+    }
+  } else {
+    // pas annuel
+    const pasAn = Math.max(1, Math.ceil((jours / 365) / 12));
+    let an = minD.getFullYear();
+    while (new Date(an, 0, 1) <= maxD) {
+      ticks.push({ date: new Date(an, 0, 1), label: String(an) });
+      an += pasAn;
+    }
+  }
+  return ticks;
+}
+
+// ---------- Parsing des dates et booléens ----------
+function parseDate(v) {
+  if (v == null || v === "") return null;
+  if (v instanceof Date && !isNaN(v)) return new Date(v.getFullYear(), v.getMonth(), v.getDate());
+
+  // Nombre : soit une année seule, soit un numéro de série Excel
+  if (typeof v === "number" && isFinite(v)) {
+    // Entier dans une plage d'années plausibles -> année (ex. 1643, 1789, 2024)
+    if (Number.isInteger(v) && v >= 1000 && v <= 2999) return new Date(v, 0, 1);
+    // Sinon, numéro de série Excel (date réelle stockée par le tableur)
+    const base = Date.UTC(1899, 11, 30);
+    const d = new Date(base + Math.round(v) * 86400000);
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  }
+
+  const s = String(v).trim();
+  // Formats français jj/mm/aaaa ou jj-mm-aaaa
+  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if (m) {
+    let [, jj, mm, aa] = m;
+    aa = aa.length === 2 ? "20" + aa : aa;
+    const d = new Date(+aa, +mm - 1, +jj);
+    return isNaN(d) ? null : d;
+  }
+  // Format ISO aaaa-mm-jj
+  m = s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
+  if (m) {
+    const d = new Date(+m[1], +m[2] - 1, +m[3]);
+    return isNaN(d) ? null : d;
+  }
+  // Année seule
+  if (/^\d{4}$/.test(s)) return new Date(+s, 0, 1);
+
+  // Dernier recours : Date.parse
+  const d = new Date(s);
+  return isNaN(d) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function estOui(v) {
+  if (v === true) return true;
+  if (typeof v === "number") return v === 1;
+  const s = String(v).trim().toLowerCase();
+  return ["oui", "o", "yes", "y", "true", "vrai", "1", "x", "ponctuel"].includes(s);
+}
+
+// ---------- Export ----------
+$("svgBtn").addEventListener("click", () => {
+  if (!svgActuel) return;
+  const data = new XMLSerializer().serializeToString(svgActuel);
+  const blob = new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n' + data], { type: "image/svg+xml" });
+  telecharger(URL.createObjectURL(blob), "frise.svg");
+});
+
+$("pngBtn").addEventListener("click", () => {
+  if (!svgActuel) return;
+  const echelle = 2; // PNG net pour impression / Word
+  const vb = svgActuel.getAttribute("viewBox").split(" ");
+  const w = +vb[2], h = +vb[3];
+  const data = new XMLSerializer().serializeToString(svgActuel);
+  const svg64 = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(data)));
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = w * echelle; canvas.height = h * echelle;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fffdf8";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.scale(echelle, echelle);
+    ctx.drawImage(img, 0, 0);
+    canvas.toBlob((blob) => telecharger(URL.createObjectURL(blob), "frise.png"));
+  };
+  img.onerror = () => avertir("chartWarn", "L'export PNG a échoué. Essayez le format SVG.");
+  img.src = svg64;
+});
+
+function telecharger(url, nom) {
+  const a = document.createElement("a");
+  a.href = url; a.download = nom;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+// ---------- Utilitaires ----------
+function avertir(idZone, msg) {
+  $(idZone).innerHTML = '<div class="warn">' + echappe(msg) + '</div>';
+}
+function echappe(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+</script>
+</body>
+</html>
