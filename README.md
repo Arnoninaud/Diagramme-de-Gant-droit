@@ -30,6 +30,8 @@ Votre fichier doit contenir une en-tête avec les noms de colonnes. Exemples de 
 | **Fait majoritaire** | majoritaire, majorité, fait_majoritaire |
 | **Ordre** | ordre, rang, position |
 
+En vous basant sur le fichier excel de test associé
+
 ### Étape 2 : Télécharger le fichier
 
 1. Ouvrez `gantt-excel.html` dans un navigateur
