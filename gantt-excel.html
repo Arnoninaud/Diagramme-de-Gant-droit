@@ -525,7 +525,7 @@ function dessinerGantt(evs) {
 
   // Découpage en bandes empilées (au plus deux) si la frise idéale est trop large.
   // Chaque bande couvre une tranche de temps sur toute la largeur -> barres plus larges.
-  const LARGEUR_BANDE = 5000;  // au-delà de laquelle on découpe en plusieurs bandes (résolution maximale pour que les étiquettes tiennent dans les barres)
+  const LARGEUR_BANDE = 1500;  // au-delà de laquelle on découpe en plusieurs bandes (résolution maximale pour que les étiquettes tiennent dans les barres)
   let nbBandes, plotW;
   if (plotWideal <= LARGEUR_BANDE) { nbBandes = 1; plotW = plotWideal; }
   else { nbBandes = Math.ceil(plotWideal / LARGEUR_BANDE); plotW = Math.ceil(plotWideal / nbBandes); }
@@ -774,8 +774,8 @@ function legende(groupes, couleurNom, orientationUtilisee, majoritaireUtilise) {
       // swatchLeg("#f8bbd0", "Gauche minoritaire") +
       // swatchLeg("#ef6c00", "Centre majoritaire") +
       // swatchLeg("#ffcc80", "Centre minoritaire") +
-      swatchLeg("#2e7d32", "Réussi") +
-      swatchLeg("#c62828", "Non réussi");
+      swatchLeg("#2e7d32", "Événement réussi") +
+      swatchLeg("#c62828", "Événement non réussi");
   }else if (groupes.length > 1) {
     html += groupes.map((g) => swatchLeg(couleurNom[g.nom], tronquer(g.nom, 24))).join("");
   }
