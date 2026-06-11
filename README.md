@@ -109,7 +109,7 @@ L'outil accepte automatiquement plusieurs formats :
 
 ## 📝 Auteur
 
-Créé par **Arnaud BUREL**
+Créé par **Arnaud BUREL** Avec les résultat de **Mathias BUREL**
 
 ## 📄 Licence
 
